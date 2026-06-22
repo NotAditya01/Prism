@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/markets/:path*",
+      "destination": "/index.html"
+    }
+  ]
+}

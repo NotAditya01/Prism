@@ -1,0 +1,36 @@
+.dot-grid {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+}
+
+.dot-grid__wrap {
+  height: 100%;
+  position: relative;
+  width: 100%;
+}
+
+.dot-grid__canvas {
+  height: 100%;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  will-change: contents;
+  width: 100%;
+}
+
+.dot-grid-hero {
+  inset: 0;
+  mask-image: linear-gradient(to bottom, black 8%, rgba(0, 0, 0, 0.78) 72%, transparent 100%);
+  opacity: 0.82;
+  position: absolute;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-grid-hero {
+    opacity: 0.55;
+  }
+}

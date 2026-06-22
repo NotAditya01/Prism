@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["node"]
+  },
+  "include": [
+    "server/**/*.ts",
+    "scripts/resolve-xlm-payments.ts",
+    "scripts/resolve-xlm-usdc-price.ts",
+    "src/generated/prism-market/src/**/*.ts",
+    "src/lib/resolver/**/*.ts"
+  ]
+}
