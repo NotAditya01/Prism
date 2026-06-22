@@ -10,6 +10,8 @@ sealed until settlement — then you prove it was right.
 
 **App:** [http://localhost:5173](http://localhost:5173) (local development)
 
+**Resolver:** [prism-production-9d69.up.railway.app](https://prism-production-9d69.up.railway.app/health)
+
 **Contract:** `CCNVNXIE74IBGWJOFNKQD6J2VZEZGQVNKZXBEKHFRWKVCOUXKFAFIQTJ`  
 [View on Stellar Expert →](https://stellar.expert/explorer/testnet/contract/CCNVNXIE74IBGWJOFNKQD6J2VZEZGQVNKZXBEKHFRWKVCOUXKFAFIQTJ)
 
@@ -26,8 +28,8 @@ sealed until settlement — then you prove it was right.
 3. Stake XLM — transferred to the contract pool on-chain
 4. Market settles from live Stellar Horizon data
 5. Unlock your sealed prediction, generate a Groth16 ZK
-   proof locally, submit claim — contract verifies and
-   pays out
+   proof locally, verify it in the browser, then submit a
+   claim — the contract validates the range and pays out
 
 ## Why ZK Is Essential
 
@@ -50,10 +52,12 @@ reason the core mechanic works at all.
 
 ## Why Stellar Specifically
 
-**Native oracle:** PRISM's Stellar Metrics markets settle
-from Horizon API data — total XLM payment volume,
-XLM/USDC order book mid-price from the SDEX. No
-Chainlink. No external trust. The chain resolves itself.
+**Stellar-native data:** PRISM's Stellar Metrics markets
+settle from Horizon API data — total XLM payment volume
+and the XLM/USDC price from the SDEX. An authenticated
+resolver fetches this public data and posts the result to
+the Soroban contract. Anyone can independently verify the
+source value.
 
 **BN254/Poseidon host functions:** Stellar Protocol 25
 introduced native BN254 elliptic curve operations
@@ -96,11 +100,11 @@ settlement state, range validation, payout math, and
 duplicate prevention — but a modified client could
 theoretically submit a different winning range.
 
-The production path is documented in
-docs/spikes/bn254-verifier-search.md. The contract and
-circuit are structured to support BN254 on-chain
-verification via Stellar's CAP-0074 host functions once
-a compatible verifier contract is available.
+The contract and circuit are structured to support BN254
+on-chain verification via Stellar's CAP-0074 host
+functions once a compatible verifier contract is
+available. The verifier investigation is reproducible with
+`scripts/verifier-smoke-test.ts`.
 
 For this hackathon MVP: proof generation and local
 verification are real, and Soroban enforces all
@@ -144,9 +148,11 @@ Soroban contract (Rust)
 ├── Payout calculation and transfer
 └── Nullifier-based duplicate prevention
 
-Resolver scripts (TypeScript)
-├── scripts/resolve-xlm-payments.ts
-└── scripts/resolve-xlm-usdc-price.ts
+Railway resolver service (Express + TypeScript)
+├── Authenticated settlement endpoints
+├── Horizon and SDEX metric collection
+├── Stellar SDK transaction signing
+└── Shared logic used by local resolver scripts
 
 Circom circuit
 └── circuits/range_market.circom
@@ -181,6 +187,18 @@ To run the resolver:
 npm run resolve:xlm-payments -- --max-pages=1
 npm run resolve:xlm-usdc
 ```
+
+The deployed resolver exposes:
+
+```text
+GET  /health
+POST /resolve/xlm-payments
+POST /resolve/xlm-usdc
+```
+
+Settlement endpoints require `RESOLVER_ADMIN_TOKEN` as a
+Bearer token. Resolver credentials remain server-side on
+Railway and are never exposed to the frontend.
 
 To run integration tests:
 
@@ -217,4 +235,4 @@ containment without revealing the range.
 - shadcn/ui (components)
 - Freighter (wallet)
 - Stellar Horizon API (oracle)
-# Prism
+- Express + Railway (resolver service)
