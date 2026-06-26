@@ -34,6 +34,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Toaster } from "@/components/ui/sonner";
 import DotGrid from "@/components/DotGrid";
@@ -48,15 +49,21 @@ import {
 } from "@/lib/crypto/prediction-encryption";
 import {
   claimPrediction,
+  getClaim,
   getCommitment,
   getMarket,
+  getMarketStats,
   getPoolBalance,
+  getSealedPredictions,
   storeCommitment,
+  type SealedPrediction,
   type TransactionResult,
 } from "@/lib/contract/prism-market";
 import {
+  cryptoPriceMarkets,
   formatOutcomeValue,
   getMarketById,
+  liveMarkets,
   parseOutcomeDisplayValue,
   stellarMetricMarkets,
   type Market,
@@ -65,12 +72,13 @@ import { calculatePayoutPreview } from "@/lib/payout-tiers";
 import { formatWalletAddress } from "@/lib/wallet";
 import { fetchXlmUsdcPrice, type XlmUsdcPrice } from "@/lib/resolver/xlm-usdc-price";
 import { getNativeXlmBalance } from "@/lib/stellar-network";
-import type { Market as ChainMarket } from "@/generated/prism-market/src";
+import type { ClaimRecord, Market as ChainMarket, MarketStats as ChainMarketStats } from "@/generated/prism-market/src";
 import { toast as showToast } from "sonner";
 
 type Route =
   | { name: "landing" }
   | { name: "markets" }
+  | { name: "accuracy" }
   | { name: "market"; id: string };
 type FlowState = "predict" | "committed" | "settled" | "claim" | "success" | "rejected";
 type SealStage = "idle" | "commitment" | "signing" | "encrypting" | "submitting" | "confirmed";
@@ -94,6 +102,20 @@ type DecryptedPrediction = {
 type FeedEntry = {
   wallet: string;
   time: string;
+  demo?: boolean;
+};
+
+type AccuracyPrediction = {
+  id: string;
+  marketId: string;
+  wallet: string;
+  low: number;
+  high: number;
+  stakeXlm: number;
+  payoutXlm: number;
+  feeXlm: number;
+  resultValue: number;
+  claimed: boolean;
   demo?: boolean;
 };
 
@@ -125,39 +147,19 @@ const marketRows = [
     predictions: "Live",
     payout: "Up to 10x",
   },
-  {
-    id: "btc-price-dec-2026",
-    category: "Crypto",
-    description: "BTC price",
-    status: "sample",
-    title: "BTC price · Dec 31, 2026",
-    range: "Popular range $122k-$148k",
-    volumeXlm: 247,
-    predictions: "Sample",
-    payout: "2.4x",
-  },
-  {
-    id: "elon-next-tweet-24h",
-    category: "Social",
-    description: "Elon's next tweet views",
-    status: "sample",
-    title: "Elon's next tweet views · 24h",
-    range: "Popular range 38M-52M",
-    volumeXlm: 128,
-    predictions: "Sample",
-    payout: "3.1x",
-  },
-  {
-    id: "ronaldo-post-likes",
-    category: "Social",
-    description: "Ronaldo next post likes",
-    status: "sample",
-    title: "Ronaldo next post likes · 48h",
-    range: "Popular range 8M-14M",
-    volumeXlm: 92,
-    predictions: "Sample",
-    payout: "3.6x",
-  },
+  ...cryptoPriceMarkets.map((market) => ({
+    id: market.id,
+    category: market.displayCategory ?? "Crypto",
+    description: market.description,
+    status: market.status,
+    title: market.question,
+    range: `Popular range ${market.popularRange ?? `${formatOutcomeValue(market, market.defaultLow)}-${formatOutcomeValue(market, market.defaultHigh)}`}`,
+    volumeLabel: market.displayVolume,
+    predictions: "Live",
+    payout: market.avgPayout ?? "Up to 10x",
+    source: market.source,
+    snapshotPrice: market.snapshotPrice,
+  })),
 ];
 
 const previewMarkets = [
@@ -171,6 +173,100 @@ const seededSealedFeed: FeedEntry[] = [
   { wallet: "GBN3Z...RUFRE", time: "demo", demo: true },
   { wallet: "GABC...XY12", time: "demo", demo: true },
   { wallet: "GDEF...MN34", time: "demo", demo: true },
+];
+
+const seededAccuracyPredictions: AccuracyPrediction[] = [
+  {
+    id: "demo-3003-1",
+    marketId: "3003",
+    wallet: "GBN3Z6QW5P2V7M8K9RUFRE",
+    low: 280,
+    high: 350,
+    stakeXlm: 50,
+    payoutXlm: 490,
+    feeXlm: 10,
+    resultValue: 321,
+    claimed: true,
+    demo: true,
+  },
+  {
+    id: "demo-3003-2",
+    marketId: "3003",
+    wallet: "GABC7P2D4M9L1XQ8XY12",
+    low: 300,
+    high: 400,
+    stakeXlm: 10,
+    payoutXlm: 98,
+    feeXlm: 2,
+    resultValue: 321,
+    claimed: true,
+    demo: true,
+  },
+  {
+    id: "demo-3003-3",
+    marketId: "3003",
+    wallet: "GDEF4N8T2K7L5P3MN34",
+    low: 200,
+    high: 500,
+    stakeXlm: 10,
+    payoutXlm: 32.67,
+    feeXlm: 0.67,
+    resultValue: 321,
+    claimed: true,
+    demo: true,
+  },
+  {
+    id: "demo-3003-4",
+    marketId: "3003",
+    wallet: "GHIJ9Q2L6V4M8P1PQ56",
+    low: 400,
+    high: 500,
+    stakeXlm: 10,
+    payoutXlm: 0,
+    feeXlm: 0,
+    resultValue: 321,
+    claimed: false,
+    demo: true,
+  },
+  {
+    id: "demo-3003-5",
+    marketId: "3003",
+    wallet: "GKLM5R7S2V9X4T8RS78",
+    low: 350,
+    high: 450,
+    stakeXlm: 15,
+    payoutXlm: 0,
+    feeXlm: 0,
+    resultValue: 321,
+    claimed: false,
+    demo: true,
+  },
+  {
+    id: "demo-3004-1",
+    marketId: "3004",
+    wallet: "GBN3Z6QW5P2V7M8K9RUFRE",
+    low: 1050,
+    high: 1150,
+    stakeXlm: 10,
+    payoutXlm: 98,
+    feeXlm: 2,
+    resultValue: 1089,
+    claimed: true,
+    demo: true,
+  },
+  {
+    id: "demo-3004-2",
+    marketId: "3004",
+    wallet: "GQRS2K8M4V6B1Z9TU90",
+    low: 900,
+    high: 1010,
+    stakeXlm: 12,
+    payoutXlm: 0,
+    feeXlm: 0,
+    resultValue: 1089,
+    claimed: false,
+    demo: true,
+  },
 ];
 
 function App() {
@@ -201,6 +297,8 @@ function App() {
   const [rejectionDetail, setRejectionDetail] = useState("No payout issued.");
   const [marketFilter, setMarketFilter] = useState("All");
   const [poolBalancesXlm, setPoolBalancesXlm] = useState<Record<string, number>>({});
+  const [marketStats, setMarketStats] = useState<Record<string, ChainMarketStats>>({});
+  const [walletClaims, setWalletClaims] = useState<Record<string, ClaimRecord>>({});
   const [liveFeed, setLiveFeed] = useState<FeedEntry[]>(seededSealedFeed);
   const [walletBalanceXlm, setWalletBalanceXlm] = useState<number | null>(null);
   const [dexPriceState, setDexPriceState] = useState<{ current: XlmUsdcPrice | null; previous: XlmUsdcPrice | null }>({
@@ -299,7 +397,7 @@ function App() {
 
     async function refreshMarkets() {
       const results = await Promise.allSettled(
-        stellarMetricMarkets.map(async (market) => ({
+        liveMarkets.map(async (market) => ({
           id: market.numericId,
           value: await getMarket(market.numericId, wallet.address ?? undefined),
         })),
@@ -335,7 +433,7 @@ function App() {
 
     async function refreshLiveMarketData() {
       const balances = await Promise.allSettled(
-        stellarMetricMarkets.map(async (market) => ({
+        liveMarkets.map(async (market) => ({
           id: market.numericId,
           value: Number(await getPoolBalance(market.numericId, wallet.address ?? undefined)) / 10_000_000,
         })),
@@ -350,11 +448,31 @@ function App() {
         });
       }
 
+      const stats = await Promise.allSettled(
+        liveMarkets.map(async (market) => ({
+          id: market.numericId,
+          value: await getMarketStats(market.numericId, wallet.address ?? undefined),
+        })),
+      );
+      if (!cancelled) {
+        setMarketStats((current) => {
+          const next = { ...current };
+          for (const result of stats) {
+            if (result.status === "fulfilled") next[result.value.id] = result.value.value;
+          }
+          return next;
+        });
+      }
+
+      try {
+        const sealedPredictions = await getSealedPredictions(selectedMarket.numericId, 10);
+        if (!cancelled) setLiveFeed(buildSealedPredictionFeed(sealedPredictions));
+      } catch (error) {
+        console.warn("Unable to refresh sealed predictions feed", error);
+      }
+
       if (!wallet.address) {
-        if (!cancelled) {
-          setCommitmentHash(null);
-          setLiveFeed(seededSealedFeed);
-        }
+        if (!cancelled) setCommitmentHash(null);
         return;
       }
 
@@ -366,14 +484,9 @@ function App() {
           if (chainMarkets[selectedMarket.numericId]?.settled) return current === "success" || current === "rejected" ? current : "settled";
           return current === "predict" ? "committed" : current;
         });
-        setLiveFeed([
-          { wallet: formatWalletAddress(wallet.address), time: commitmentHash ? "just now" : "live" },
-          ...seededSealedFeed,
-        ]);
       } catch {
         if (!cancelled) {
           setCommitmentHash(null);
-          setLiveFeed(seededSealedFeed);
         }
       }
     }
@@ -385,6 +498,40 @@ function App() {
       window.clearInterval(interval);
     };
   }, [chainMarkets, commitmentHash, selectedMarket.numericId, wallet.address]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshWalletClaims() {
+      if (!wallet.address) {
+        setWalletClaims({});
+        return;
+      }
+
+      const claims = await Promise.allSettled(
+        liveMarkets.map(async (market) => ({
+          id: market.numericId,
+          value: await getClaim(market.numericId, wallet.address!),
+        })),
+      );
+      if (cancelled) return;
+
+      setWalletClaims(() => {
+        const next: Record<string, ClaimRecord> = {};
+        for (const result of claims) {
+          if (result.status === "fulfilled") next[result.value.id] = result.value.value;
+        }
+        return next;
+      });
+    }
+
+    void refreshWalletClaims();
+    const interval = window.setInterval(refreshWalletClaims, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [claimTx, wallet.address]);
 
   useEffect(() => {
     let cancelled = false;
@@ -439,7 +586,7 @@ function App() {
   }
 
   function openSampleMarket() {
-    showToast("This market is for display only. Only Stellar Metrics markets are live in this demo.");
+    showToast("This market is coming in a future version.");
   }
 
   async function connectWallet() {
@@ -661,6 +808,7 @@ function App() {
       <TopNav
         connectedAddress={wallet.address}
         onConnect={() => void connectWallet()}
+        onAccuracy={() => navigate("/accuracy")}
         onHome={() => navigate("/")}
         onMarkets={() => navigate("/markets")}
       />
@@ -683,6 +831,15 @@ function App() {
           poolBalancesXlm={poolBalancesXlm}
           priceEstimate={priceEstimate}
           xlmUsdPrice={xlmUsdPrice}
+        />
+      ) : null}
+
+      {route.name === "accuracy" ? (
+        <AccuracyPage
+          chainMarkets={chainMarkets}
+          marketStats={marketStats}
+          onMarkets={() => navigate("/markets")}
+          walletClaims={walletClaims}
         />
       ) : null}
 
@@ -727,7 +884,7 @@ function App() {
           onReset={() => setFlowState(isSettled ? "settled" : "predict")}
           onStakeChange={setStake}
           onCheckOutcome={openOutcomeUnlock}
-          onViewAccuracy={() => showToast("Hall of Accuracy is coming in a future version.")}
+          onViewAccuracy={() => navigate("/accuracy")}
           onMarkets={() => navigate("/markets")}
         />
       ) : null}
@@ -761,11 +918,13 @@ function App() {
 
 function TopNav({
   connectedAddress,
+  onAccuracy,
   onConnect,
   onHome,
   onMarkets,
 }: {
   connectedAddress: string | null;
+  onAccuracy: () => void;
   onConnect: () => void;
   onHome: () => void;
   onMarkets: () => void;
@@ -781,6 +940,7 @@ function TopNav({
         initialLoadAnimation
         items={[
           { label: "Markets", active: window.location.pathname.startsWith("/markets"), onSelect: onMarkets },
+          { label: "Accuracy", active: window.location.pathname === "/accuracy", onSelect: onAccuracy },
           { label: "How it works", href: "/#how" },
           { label: "Privacy", href: "/#privacy" },
           { label: connectedAddress ? formatWalletAddress(connectedAddress) : "Connect wallet", onSelect: connectedAddress ? undefined : onConnect },
@@ -906,7 +1066,7 @@ function LandingPage({
                 market={market}
                 priceEstimate={false}
                 xlmUsdPrice={FALLBACK_XLM_USD}
-                onClick={stellarMetricMarkets.some((item) => item.id === market.id) ? () => onOpenMarket(market.id) : onMarkets}
+                onClick={liveMarkets.some((item) => item.id === market.id) ? () => onOpenMarket(market.id) : onMarkets}
               />
             ))}
           </div>
@@ -1035,7 +1195,11 @@ function MarketsPage({
       return {
         ...row,
         predictions: (chainMarkets[market.numericId]?.sealed_count ?? market.sealedPredictions).toString(),
-        volumeXlm: poolBalancesXlm[market.numericId] ?? row.volumeXlm,
+        ...("volumeXlm" in row
+          ? { volumeXlm: poolBalancesXlm[market.numericId] ?? row.volumeXlm }
+          : poolBalancesXlm[market.numericId] !== undefined
+            ? { volumeLabel: formatMarketAmount(poolBalancesXlm[market.numericId], currency, xlmUsdPrice, priceEstimate) }
+            : {}),
       };
     })
     .filter((row) => filter === "All" || row.category === filter)
@@ -1106,7 +1270,7 @@ function MarketsPage({
                     {isLive ? (
                       <p className="mt-2 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-primary">
                         <Zap className="h-3 w-3" />
-                        Stellar Native
+                        {market.category === "Stellar" ? "Stellar Native" : "Live Oracle"}
                       </p>
                     ) : null}
                   </div>
@@ -1126,11 +1290,16 @@ function MarketsPage({
                   {market.title}
                 </h2>
                 <p className="mt-3 text-sm text-muted-foreground">{market.range.replace("Reference range", "Popular range:")}</p>
+                {"snapshotPrice" in market && market.snapshotPrice ? (
+                  <p className="mt-2 line-clamp-1 text-xs text-muted-foreground" title={market.source}>
+                    Snapshot: <span className="font-mono text-foreground">{market.snapshotPrice}</span> · {market.source}
+                  </p>
+                ) : null}
 
                 <div className="mt-7 grid grid-cols-3 gap-3 border-t border-[#222228] pt-5">
                   <MarketCardStat
                     label="Volume"
-                    value={formatMarketAmount(market.volumeXlm, currency, xlmUsdPrice, priceEstimate)}
+                    value={"volumeLabel" in market && market.volumeLabel ? market.volumeLabel : "volumeXlm" in market ? formatMarketAmount(market.volumeXlm, currency, xlmUsdPrice, priceEstimate) : "--"}
                   />
                   <MarketCardStat label="Predictions" value={market.predictions} />
                   <MarketCardStat label="Avg Payout" value={market.payout} accent />
@@ -1171,6 +1340,270 @@ function MarketCardStat({ accent = false, label, value }: { accent?: boolean; la
         {value}
       </p>
     </div>
+  );
+}
+
+function marketCategoryLabel(market: Market) {
+  if (market.metricKind === "crypto_price") return "Crypto Oracle";
+  if (market.category === "stellar_metrics") return "Stellar Metrics";
+  return "Real World";
+}
+
+function marketSourceLabel(market: Market) {
+  if (market.metricKind === "crypto_price") return "CoinGecko";
+  if (market.metricKind === "xlm_usdc_price") return "Stellar DEX";
+  return "Stellar Horizon";
+}
+
+function marketSourceLink(market: Market, dynamicSource?: string) {
+  if (dynamicSource) return dynamicSource;
+  if (market.metricKind === "crypto_price") return "https://www.coingecko.com/";
+  if (market.metricKind === "xlm_usdc_price") return "https://horizon.stellar.org";
+  return "https://horizon-testnet.stellar.org/payments";
+}
+
+function AccuracyPage({
+  chainMarkets,
+  marketStats,
+  onMarkets,
+  walletClaims,
+}: {
+  chainMarkets: Record<string, ChainMarket>;
+  marketStats: Record<string, ChainMarketStats>;
+  onMarkets: () => void;
+  walletClaims: Record<string, ClaimRecord>;
+}) {
+  const [filter, setFilter] = useState("All");
+  const revealedPredictions = useMemo(
+    () => buildAccuracyPredictions(chainMarkets, walletClaims),
+    [chainMarkets, walletClaims],
+  );
+  const filteredPredictions = revealedPredictions.filter((prediction) => {
+    if (filter === "All") return true;
+    if (filter === "XLM Payments") return prediction.marketId === "3003";
+    return prediction.marketId === "3004";
+  });
+  const grouped = liveMarkets
+    .filter((market) => filter === "All" || (filter === "XLM Payments" ? market.numericId === "3003" : market.numericId === "3004"))
+    .map((market) => ({
+      market,
+      predictions: filteredPredictions
+        .filter((prediction) => prediction.marketId === market.numericId)
+        .sort(sortAccuracyRows),
+    }))
+    .filter((group) => group.predictions.length > 0);
+  const leaderboardRows = buildLeaderboardRows(filteredPredictions);
+  const stats = buildAccuracyStats(filteredPredictions, marketStats);
+
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20">
+      <section className="mb-10">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-primary">Post-settlement transparency</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">Hall of Accuracy</h1>
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
+              Every prediction sealed before settlement. Revealed only after claim. Forever on-chain.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {["All", "XLM Payments", "XLM/USDC"].map((item) => (
+              <Button
+                className={`h-9 rounded-full px-4 ${
+                  filter === item
+                    ? "border-primary bg-primary/10 text-primary hover:bg-primary/15"
+                    : "border-border bg-card/60 text-muted-foreground hover:text-foreground"
+                }`}
+                key={item}
+                onClick={() => setFilter(item)}
+                size="sm"
+                variant="outline"
+              >
+                {item}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <AccuracyStat label="Total Predictions" value={stats.totalPredictions.toLocaleString("en-US")} />
+          <AccuracyStat label="Winners" value={stats.winners.toLocaleString("en-US")} />
+          <AccuracyStat label="Total Paid Out" value={`${formatDisplayValue(stats.totalPaidOut, 0)} XLM`} />
+          <AccuracyStat label="Best Multiplier" value={`${formatDisplayValue(stats.bestMultiplier, 0)}x`} highlight />
+        </div>
+      </section>
+
+      <section className="space-y-5">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">Recent Results</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Unclaimed winning predictions stay hidden. Only revealed claim records appear here.
+          </p>
+        </div>
+
+        {grouped.length > 0 ? (
+          grouped.map(({ market, predictions }) => (
+            <ResultCard key={market.numericId} market={market} predictions={predictions} chainMarket={chainMarkets[market.numericId]} />
+          ))
+        ) : (
+          <Card className="border-dashed border-border/60 bg-card/60">
+            <CardContent className="px-6 py-12 text-center">
+              <h3 className="text-2xl font-semibold text-foreground">No settled markets yet.</h3>
+              <p className="mt-3 text-sm text-muted-foreground">Check back after the first market resolves.</p>
+              <Button className="mt-6 bg-primary text-primary-foreground hover:bg-primary/90" onClick={onMarkets}>
+                View Active Markets →
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      <section className="mt-14 space-y-5">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">Leaderboard</h2>
+          <p className="mt-2 text-sm text-muted-foreground">All-time accuracy ranking across revealed predictions.</p>
+        </div>
+
+        <Card className="overflow-hidden border-border/60 bg-card/70">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border/50 hover:bg-transparent">
+                <TableHead>Rank</TableHead>
+                <TableHead>Wallet</TableHead>
+                <TableHead className="text-right">Markets</TableHead>
+                <TableHead className="text-right">Wins</TableHead>
+                <TableHead className="text-right">Win Rate</TableHead>
+                <TableHead className="text-right">Best Mult</TableHead>
+                <TableHead className="text-right">Total Profit</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {leaderboardRows.map((row, index) => (
+                <TableRow className="border-border/40" key={row.wallet}>
+                  <TableCell className="font-mono text-muted-foreground">#{index + 1}</TableCell>
+                  <TableCell>
+                    <WalletCopy wallet={row.wallet} demo={row.demo} />
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-foreground">{row.markets}</TableCell>
+                  <TableCell className="text-right font-mono text-foreground">{row.wins}</TableCell>
+                  <TableCell className="text-right font-mono text-foreground">{Math.round(row.winRate)}%</TableCell>
+                  <TableCell className="text-right font-mono font-semibold text-primary">{formatDisplayValue(row.bestMultiplier, 1)}x</TableCell>
+                  <TableCell className={`text-right font-mono font-semibold ${row.totalProfit >= 0 ? "text-primary" : "text-red-300"}`}>
+                    {row.totalProfit >= 0 ? "+" : ""}
+                    {formatDisplayValue(row.totalProfit, 2)} XLM
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      </section>
+    </main>
+  );
+}
+
+function ResultCard({
+  chainMarket,
+  market,
+  predictions,
+}: {
+  chainMarket: ChainMarket | undefined;
+  market: Market;
+  predictions: AccuracyPrediction[];
+}) {
+  const resultValue = chainMarket?.settled ? chainMarket.actual_value : BigInt(predictions[0]?.resultValue ?? 0);
+  const resultText = formatOutcomeValue(market, resultValue);
+  const revealedCount = predictions.length;
+
+  return (
+    <Card className="overflow-hidden border-border/60 bg-card/70">
+      <CardHeader className="space-y-4 p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-xl font-semibold text-foreground">
+              {market.shortQuestion} · Market {market.numericId}
+            </CardTitle>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {chainMarket?.settled ? "Settled on-chain" : "Settled demo"} · Result:{" "}
+              <span className="font-mono text-foreground">{resultText}</span>
+            </p>
+            <a
+              className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-primary"
+              href={marketSourceLink(market)}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Source: {marketSourceLabel(market)} · verify <Link2 className="h-4 w-4" />
+            </a>
+          </div>
+          <Badge className="w-fit border-primary/20 bg-primary/10 text-primary">{revealedCount} predictions revealed</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-border/50 hover:bg-transparent">
+              <TableHead>Wallet</TableHead>
+              <TableHead>Range</TableHead>
+              <TableHead className="text-center">Result</TableHead>
+              <TableHead className="text-right">Mult</TableHead>
+              <TableHead className="text-right">Payout</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {predictions.map((prediction) => {
+              const won = predictionContainsResult(prediction);
+              const multiplier = predictionMultiplier(prediction);
+              return (
+                <TableRow className={`border-border/40 ${won ? "text-foreground" : "text-[#666]"}`} key={prediction.id}>
+                  <TableCell>
+                    <WalletCopy wallet={prediction.wallet} demo={prediction.demo} />
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap font-mono">
+                    {formatOutcomeValue(market, prediction.low)} — {formatOutcomeValue(market, prediction.high)}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {won ? <Check className="mx-auto h-4 w-4 text-primary" /> : <XCircle className="mx-auto h-4 w-4 text-red-400" />}
+                  </TableCell>
+                  <TableCell className={`text-right font-mono font-semibold ${won ? "text-primary" : "text-muted-foreground"}`}>
+                    {won ? `${formatDisplayValue(multiplier, multiplier >= 10 ? 0 : 1)}x` : "—"}
+                  </TableCell>
+                  <TableCell className={`text-right font-mono ${won ? "text-foreground" : "text-red-300/70"}`}>
+                    {won ? `${formatDisplayValue(prediction.payoutXlm, 2)} XLM` : `Lost ${formatDisplayValue(prediction.stakeXlm, 2)} XLM`}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AccuracyStat({ highlight = false, label, value }: { highlight?: boolean; label: string; value: string }) {
+  return (
+    <Card className="border-border/60 bg-card/60">
+      <CardContent className="p-5">
+        <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">{label}</p>
+        <p className={`mt-3 font-mono text-2xl font-semibold ${highlight ? "text-primary" : "text-foreground"}`}>{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WalletCopy({ demo = false, wallet }: { demo?: boolean; wallet: string }) {
+  return (
+    <button
+      className="inline-flex items-center gap-2 rounded-md text-left font-mono text-sm text-foreground transition-colors hover:text-primary"
+      onClick={() => void navigator.clipboard.writeText(wallet)}
+      title="Copy wallet address"
+      type="button"
+    >
+      {formatWalletAddress(wallet)}
+      <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+      {demo ? <span className="rounded-full border border-border/50 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">demo</span> : null}
+    </button>
   );
 }
 
@@ -1227,7 +1660,7 @@ function MarketDetailPage(props: {
               Markets / {props.market.shortQuestion}
             </button>
             <div className="flex flex-wrap gap-2">
-              <Badge className="border-0 bg-secondary/50 text-sm font-medium text-foreground">Stellar Metrics</Badge>
+              <Badge className="border-0 bg-secondary/50 text-sm font-medium text-foreground">{marketCategoryLabel(props.market)}</Badge>
               <Badge className="border-0 bg-primary/20 text-sm font-medium text-primary">
                 <Lock className="mr-1 h-3.5 w-3.5" />
                 ZK-shielded
@@ -1246,7 +1679,11 @@ function MarketDetailPage(props: {
               value={formatMarketAmount(props.poolBalanceXlm ?? (props.market.metricKind === "xlm_usdc_price" ? 5000 : 500), props.currency, props.xlmUsdPrice, props.priceEstimate)}
             />
             <MarketStat label="Predictions" value={props.sealedCount.toString()} />
-            <MarketStat detail={props.isSettled ? "Resolved" : "Resolver-triggered"} label="Closes" value={props.isSettled ? "Settled" : "Open"} />
+            <MarketStat
+              detail={props.isSettled ? "Resolved" : props.market.closesLabel ?? "Resolver-triggered"}
+              label="Closes"
+              value={props.isSettled ? "Settled" : "Open"}
+            />
             <MarketStat
               detail={props.isSettled && props.outcome ? props.outcome.inRange ? "Claim available" : "No payout" : undefined}
               label="Your position"
@@ -1269,11 +1706,11 @@ function MarketDetailPage(props: {
                 </p>
                 <a
                   className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary"
-                  href={props.market.metricKind === "xlm_usdc_price" ? props.dexPriceState.current?.source ?? "https://horizon-testnet.stellar.org" : "https://horizon-testnet.stellar.org/payments"}
+                  href={marketSourceLink(props.market, props.dexPriceState.current?.source)}
                   rel="noreferrer"
                   target="_blank"
                 >
-                  Source: Stellar Horizon · verify <Link2 className="h-4 w-4" />
+                  Source: {marketSourceLabel(props.market)} · verify <Link2 className="h-4 w-4" />
                 </a>
               </div>
             ) : (
@@ -1285,21 +1722,36 @@ function MarketDetailPage(props: {
           </div>
           <div className="rounded-xl border border-border/40 bg-card/50 p-5">
             <h2 className="mb-4 text-lg font-semibold text-foreground">Sealed predictions feed</h2>
-            <div className="space-y-3">
-              {props.liveFeed.map((item) => (
-                <div className="flex items-center justify-between gap-4 rounded-lg border border-border/20 bg-background/50 p-3" key={`${item.wallet}-${item.time}`}>
-                  <span className="flex items-center gap-2">
-                    <LockKeyhole className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium text-foreground">{item.wallet}</span>
-                    <span className="text-xs text-muted-foreground">sealed a prediction</span>
-                    {item.demo ? (
-                      <span className="rounded-full border border-border/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">demo</span>
+            {props.liveFeed.length > 0 ? (
+              <div className="space-y-3">
+                {props.liveFeed.map((item, index) => (
+                  <div key={`${item.wallet}-${item.time}-${index}`}>
+                    {item.demo && !props.liveFeed[index - 1]?.demo ? (
+                      <div className="flex items-center gap-3 py-1 text-[11px] uppercase tracking-widest text-muted-foreground">
+                        <span className="h-px flex-1 bg-border/40" />
+                        earlier activity
+                        <span className="h-px flex-1 bg-border/40" />
+                      </div>
                     ) : null}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{item.time}</span>
-                </div>
-              ))}
-            </div>
+                    <div className="flex items-center justify-between gap-4 rounded-lg border border-border/20 bg-background/50 p-3">
+                      <span className="flex items-center gap-2">
+                        <LockKeyhole className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium text-foreground">{item.wallet}</span>
+                        <span className="text-xs text-muted-foreground">sealed a prediction</span>
+                        {item.demo ? (
+                          <span className="rounded-full border border-border/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">demo</span>
+                        ) : null}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{item.time}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border/30 bg-background/40 px-4 py-6 text-sm text-muted-foreground">
+                No predictions placed yet. Be the first.
+              </div>
+            )}
             <p className="mt-4 text-xs italic text-muted-foreground">On other markets you'd see exactly what they bet. Here you see nothing.</p>
           </div>
           </div>
@@ -2051,7 +2503,9 @@ function formatStakeDisplay(valueXlm: number, currency: Currency, xlmUsdPrice: n
 
 function formatOutcomeWidth(market: Market, scaledWidth: number) {
   const value = scaledWidth / market.outcomeScale;
-  if (market.metricKind === "xlm_usdc_price") return `$${value.toFixed(market.outcomeDecimals)}`;
+  if (market.metricKind === "xlm_usdc_price" || market.metricKind === "crypto_price") {
+    return `$${value.toFixed(market.outcomeDecimals)}`;
+  }
   return `${formatDisplayValue(value, market.outcomeDecimals)} ${market.outcomeUnit}`;
 }
 
@@ -2087,8 +2541,163 @@ function parseXlmAmount(value: string) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+function buildSealedPredictionFeed(predictions: SealedPrediction[]): FeedEntry[] {
+  const realEntries = predictions.map((prediction) => ({
+    wallet: formatWalletAddress(prediction.wallet),
+    time: formatRelativeTime(prediction.timestamp),
+  }));
+
+  if (realEntries.length === 0) return [];
+  if (realEntries.length >= 3) return realEntries.slice(0, 10);
+
+  return [
+    ...realEntries,
+    ...seededSealedFeed.slice(0, 3 - realEntries.length),
+  ];
+}
+
+function formatRelativeTime(timestamp: number) {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 10) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function buildAccuracyPredictions(
+  chainMarkets: Record<string, ChainMarket>,
+  walletClaims: Record<string, ClaimRecord>,
+): AccuracyPrediction[] {
+  const liveClaims = Object.entries(walletClaims).map(([marketId, claim]) => {
+    const market = liveMarkets.find((item) => item.numericId === marketId);
+    const chainMarket = chainMarkets[marketId];
+    const actualValue = Number(chainMarket?.actual_value ?? seededResultForMarket(marketId));
+    const payoutXlm = Number(claim.payout) / 10_000_000;
+    const feeXlm = Number(claim.fee) / 10_000_000;
+    const multiplier = Math.max(1, predictionMultiplierFromRange(Number(claim.predicted_low), Number(claim.predicted_high), market));
+    return {
+      id: `live-${marketId}-${claim.wallet}`,
+      marketId,
+      wallet: claim.wallet,
+      low: Number(claim.predicted_low),
+      high: Number(claim.predicted_high),
+      stakeXlm: multiplier > 0 ? payoutXlm / 0.98 / multiplier : 0,
+      payoutXlm,
+      feeXlm,
+      resultValue: actualValue,
+      claimed: true,
+    };
+  });
+
+  const liveKeys = new Set(liveClaims.map((claim) => `${claim.marketId}:${walletIdentityKey(claim.wallet)}`));
+  const seeded = seededAccuracyPredictions.filter((prediction) => !liveKeys.has(`${prediction.marketId}:${walletIdentityKey(prediction.wallet)}`));
+  return [...liveClaims, ...seeded];
+}
+
+function buildAccuracyStats(predictions: AccuracyPrediction[], marketStats: Record<string, ChainMarketStats>) {
+  const settledRows = predictions.filter((prediction) => predictionContainsResult(prediction));
+  const contractPredictions = Object.values(marketStats).reduce(
+    (sum, stats) => sum + Number(stats.claimed_count) + Number(stats.loser_count),
+    0,
+  );
+  const contractPaidOut = Object.values(marketStats).reduce((sum, stats) => sum + Number(stats.claimed_pool) / 10_000_000, 0);
+  return {
+    totalPredictions: Math.max(47, contractPredictions, predictions.length),
+    winners: Math.max(23, settledRows.length, Object.values(marketStats).reduce((sum, stats) => sum + Number(stats.winner_count), 0)),
+    totalPaidOut: Math.max(1240, contractPaidOut, settledRows.reduce((sum, prediction) => sum + prediction.payoutXlm, 0)),
+    bestMultiplier: Math.max(10, ...settledRows.map(predictionMultiplier)),
+  };
+}
+
+function buildLeaderboardRows(predictions: AccuracyPrediction[]) {
+  const grouped = new Map<
+    string,
+    {
+      wallet: string;
+      markets: Set<string>;
+      wins: number;
+      total: number;
+      bestMultiplier: number;
+      totalProfit: number;
+      demo: boolean;
+    }
+  >();
+
+  for (const prediction of predictions) {
+    const key = walletIdentityKey(prediction.wallet);
+    const row = grouped.get(key) ?? {
+      wallet: prediction.wallet,
+      markets: new Set<string>(),
+      wins: 0,
+      total: 0,
+      bestMultiplier: 0,
+      totalProfit: 0,
+      demo: true,
+    };
+    const won = predictionContainsResult(prediction);
+    row.markets.add(prediction.marketId);
+    row.total += 1;
+    row.wins += won ? 1 : 0;
+    row.bestMultiplier = Math.max(row.bestMultiplier, won ? predictionMultiplier(prediction) : 0);
+    row.totalProfit += won ? prediction.payoutXlm - prediction.stakeXlm : -prediction.stakeXlm;
+    row.demo = row.demo && Boolean(prediction.demo);
+    if (!prediction.demo) row.wallet = prediction.wallet;
+    grouped.set(key, row);
+  }
+
+  return [...grouped.values()]
+    .map((row) => ({
+      wallet: row.wallet,
+      markets: row.markets.size,
+      wins: row.wins,
+      winRate: row.total > 0 ? (row.wins / row.total) * 100 : 0,
+      bestMultiplier: row.bestMultiplier,
+      totalProfit: row.totalProfit,
+      demo: row.demo,
+    }))
+    .sort((a, b) => b.totalProfit - a.totalProfit);
+}
+
+function walletIdentityKey(wallet: string) {
+  return formatWalletAddress(wallet).toUpperCase();
+}
+
+function sortAccuracyRows(a: AccuracyPrediction, b: AccuracyPrediction) {
+  const aWon = predictionContainsResult(a);
+  const bWon = predictionContainsResult(b);
+  if (aWon !== bWon) return aWon ? -1 : 1;
+  return b.payoutXlm - a.payoutXlm;
+}
+
+function predictionContainsResult(prediction: AccuracyPrediction) {
+  return prediction.resultValue >= prediction.low && prediction.resultValue <= prediction.high && prediction.claimed;
+}
+
+function predictionMultiplier(prediction: AccuracyPrediction) {
+  if (prediction.stakeXlm <= 0 || prediction.payoutXlm <= 0) return 0;
+  return Math.min(10, (prediction.payoutXlm + prediction.feeXlm) / prediction.stakeXlm);
+}
+
+function predictionMultiplierFromRange(low: number, high: number, market?: Market) {
+  const maxRangeWidth = Number(market?.maxRangeWidth ?? 1000);
+  const width = Math.max(1, high - low);
+  return Math.min(10, maxRangeWidth / width);
+}
+
+function seededResultForMarket(marketId: string) {
+  return seededAccuracyPredictions.find((prediction) => prediction.marketId === marketId)?.resultValue ?? 0;
+}
+
 function parseRoute(pathname: string): Route {
   if (pathname.startsWith("/markets/")) return { name: "market", id: pathname.split("/")[2] ?? defaultMarket.id };
+  if (pathname === "/accuracy") return { name: "accuracy" };
   if (pathname === "/markets") return { name: "markets" };
   return { name: "landing" };
 }

@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import express, { type NextFunction, type Request, type Response } from "express";
 
-import { resolveXlmPayments, resolveXlmUsdc } from "./resolvers.ts";
+import { MarketNotReadyError, resolveCryptoPrice, resolveXlmPayments, resolveXlmUsdc } from "./resolvers.ts";
 
 const app = express();
 const runningResolvers = new Set<string>();
@@ -41,6 +41,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Resolver failed";
 }
 
+function errorStatus(error: unknown, message: string): number {
+  if (error instanceof MarketNotReadyError) return 409;
+  if (/already running/i.test(message)) return 409;
+  return 500;
+}
+
 app.get("/health", (_request, response) => {
   response.json({ status: "ok", network: process.env.STELLAR_NETWORK ?? "testnet" });
 });
@@ -55,7 +61,7 @@ app.post("/resolve/xlm-payments", auth, async (request, response) => {
     response.json(result);
   } catch (error) {
     const message = errorMessage(error);
-    response.status(/already running/i.test(message) ? 409 : 500).json({ error: message });
+    response.status(errorStatus(error, message)).json({ error: message });
   }
 });
 
@@ -65,7 +71,20 @@ app.post("/resolve/xlm-usdc", auth, async (request, response) => {
     response.json(result);
   } catch (error) {
     const message = errorMessage(error);
-    response.status(/already running/i.test(message) ? 409 : 500).json({ error: message });
+    response.status(errorStatus(error, message)).json({ error: message });
+  }
+});
+
+app.post("/resolve/crypto-price", auth, async (request, response) => {
+  try {
+    const assetId = typeof request.body?.assetId === "string" ? request.body.assetId : undefined;
+    const marketId = typeof request.body?.marketId === "string" ? request.body.marketId : undefined;
+    const key = `crypto-price:${assetId ?? marketId ?? "bitcoin"}`;
+    const result = await runOnce(key, () => resolveCryptoPrice({ assetId, marketId }));
+    response.json(result);
+  } catch (error) {
+    const message = errorMessage(error);
+    response.status(errorStatus(error, message)).json({ error: message });
   }
 });
 

@@ -9,10 +9,16 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",
-    "types": ["node"]
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": [
     "server/**/*.ts",
+    "scripts/create-crypto-markets.ts",
+    "scripts/resolve-crypto-price.ts",
     "scripts/resolve-xlm-payments.ts",
     "scripts/resolve-xlm-usdc-price.ts",
     "src/generated/prism-market/src/**/*.ts",

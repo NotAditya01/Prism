@@ -3,7 +3,8 @@ import type { PayoutTier } from "@/lib/payout-tiers";
 export type MarketCategory = "stellar_metrics" | "real_world";
 export type MarketStatus = "active" | "sample";
 export type SettlementStatus = "active" | "pending_settlement" | "settled";
-export type MarketMetricKind = "xlm_payments" | "xlm_usdc_price" | "sample";
+export type MarketMetricKind = "xlm_payments" | "xlm_usdc_price" | "crypto_price" | "sample";
+export type DisplayMarketCategory = "Crypto" | "Social" | "Stellar";
 
 export type Market = {
   id: string;
@@ -33,7 +34,18 @@ export type Market = {
   outcomeScale: number;
   outcomeDecimals: number;
   outcomeUnit: string;
+  displayCategory?: DisplayMarketCategory;
+  popularRange?: string;
+  avgPayout?: string;
+  displayVolume?: string;
+  resolverAssetId?: string;
+  snapshotPrice?: string;
+  resolutionTime?: number;
+  closesLabel?: string;
 };
+
+export const cryptoMarketResolutionTime = 1782691200; // 2026-06-29T00:00:00Z
+export const cryptoMarketClosesLabel = "June 29, 2026 · 00:00 UTC";
 
 export const defaultPayoutTiers: PayoutTier[] = [
   { id: 4, label: "Tier 4", maxWidth: "100", multiplier: 4, payout: "40 testnet XLM" },
@@ -105,6 +117,237 @@ export const stellarMetricMarkets: Market[] = [
   },
 ];
 
+export const cryptoPriceMarkets: Market[] = [
+  {
+    id: "btc-price-dec-2026",
+    numericId: "3005",
+    metricKind: "crypto_price",
+    category: "real_world",
+    displayCategory: "Crypto",
+    question: "BTC price at Dec 31, 2026",
+    shortQuestion: "BTC price",
+    description:
+      "Predict the Bitcoin spot price in USD. Resolved from CoinGecko's Bitcoin USD spot price feed for demo settlement.",
+    metric: "BTC/USD spot price",
+    source: "CoinGecko bitcoin USD price",
+    window: cryptoMarketClosesLabel,
+    stake: "5+ testnet XLM",
+    maxPayout: "10x less 2% fee",
+    maxRangeWidth: "250000",
+    sealedPredictions: 0,
+    status: "active",
+    settlementStatus: "active",
+    tierSummary: "Up to 10x",
+    settlementSource: "Pending resolver-posted CoinGecko result",
+    settledValue: null,
+    tiers: defaultPayoutTiers,
+    rangeMin: 0,
+    rangeMax: 250000,
+    defaultLow: "55000",
+    defaultHigh: "70000",
+    outcomeScale: 1,
+    outcomeDecimals: 0,
+    outcomeUnit: "USD",
+    popularRange: "$55,000 - $70,000",
+    avgPayout: "2.4x",
+    displayVolume: "$52.4K",
+    resolverAssetId: "bitcoin",
+    snapshotPrice: "$60,475",
+    resolutionTime: cryptoMarketResolutionTime,
+    closesLabel: cryptoMarketClosesLabel,
+  },
+  {
+    id: "eth-price-dec-2026",
+    numericId: "3006",
+    metricKind: "crypto_price",
+    category: "real_world",
+    displayCategory: "Crypto",
+    question: "ETH price at Dec 31, 2026",
+    shortQuestion: "ETH price",
+    description:
+      "Predict the Ethereum spot price in USD. Resolved from CoinGecko's Ethereum USD spot price feed for demo settlement.",
+    metric: "ETH/USD spot price",
+    source: "CoinGecko ethereum USD price",
+    window: cryptoMarketClosesLabel,
+    stake: "5+ testnet XLM",
+    maxPayout: "10x less 2% fee",
+    maxRangeWidth: "10000",
+    sealedPredictions: 0,
+    status: "active",
+    settlementStatus: "active",
+    tierSummary: "Up to 10x",
+    settlementSource: "Pending resolver-posted CoinGecko result",
+    settledValue: null,
+    tiers: defaultPayoutTiers,
+    rangeMin: 0,
+    rangeMax: 10000,
+    defaultLow: "1200",
+    defaultHigh: "2200",
+    outcomeScale: 1,
+    outcomeDecimals: 0,
+    outcomeUnit: "USD",
+    popularRange: "$1,200 - $2,200",
+    avgPayout: "3.1x",
+    displayVolume: "$31.2K",
+    resolverAssetId: "ethereum",
+    snapshotPrice: "$1,578.87",
+    resolutionTime: cryptoMarketResolutionTime,
+    closesLabel: cryptoMarketClosesLabel,
+  },
+  {
+    id: "sol-price-dec-2026",
+    numericId: "3007",
+    metricKind: "crypto_price",
+    category: "real_world",
+    displayCategory: "Crypto",
+    question: "SOL price at Dec 31, 2026",
+    shortQuestion: "SOL price",
+    description:
+      "Predict the Solana spot price in USD. Resolved from CoinGecko's Solana USD spot price feed for demo settlement.",
+    metric: "SOL/USD spot price",
+    source: "CoinGecko solana USD price",
+    window: cryptoMarketClosesLabel,
+    stake: "5+ testnet XLM",
+    maxPayout: "10x less 2% fee",
+    maxRangeWidth: "1000",
+    sealedPredictions: 0,
+    status: "active",
+    settlementStatus: "active",
+    tierSummary: "Up to 10x",
+    settlementSource: "Pending resolver-posted CoinGecko result",
+    settledValue: null,
+    tiers: defaultPayoutTiers,
+    rangeMin: 0,
+    rangeMax: 1000,
+    defaultLow: "50",
+    defaultHigh: "90",
+    outcomeScale: 1,
+    outcomeDecimals: 0,
+    outcomeUnit: "USD",
+    popularRange: "$50 - $90",
+    avgPayout: "2.8x",
+    displayVolume: "$24.7K",
+    resolverAssetId: "solana",
+    snapshotPrice: "$70.57",
+    resolutionTime: cryptoMarketResolutionTime,
+    closesLabel: cryptoMarketClosesLabel,
+  },
+  {
+    id: "xlm-price-dec-2026",
+    numericId: "3008",
+    metricKind: "crypto_price",
+    category: "real_world",
+    displayCategory: "Crypto",
+    question: "XLM price at Dec 31, 2026",
+    shortQuestion: "XLM price",
+    description:
+      "Predict the Stellar Lumens spot price in USD. Resolved from CoinGecko's Stellar USD spot price feed for demo settlement.",
+    metric: "XLM/USD spot price",
+    source: "CoinGecko stellar USD price",
+    window: cryptoMarketClosesLabel,
+    stake: "5+ testnet XLM",
+    maxPayout: "10x less 2% fee",
+    maxRangeWidth: "10000",
+    sealedPredictions: 0,
+    status: "active",
+    settlementStatus: "active",
+    tierSummary: "Up to 10x",
+    settlementSource: "Pending resolver-posted CoinGecko result",
+    settledValue: null,
+    tiers: defaultPayoutTiers,
+    rangeMin: 0,
+    rangeMax: 10000,
+    defaultLow: "1400",
+    defaultHigh: "2200",
+    outcomeScale: 10000,
+    outcomeDecimals: 4,
+    outcomeUnit: "USD",
+    popularRange: "$0.1400 - $0.2200",
+    avgPayout: "3.4x",
+    displayVolume: "$18.9K",
+    resolverAssetId: "stellar",
+    snapshotPrice: "$0.1786",
+    resolutionTime: cryptoMarketResolutionTime,
+    closesLabel: cryptoMarketClosesLabel,
+  },
+  {
+    id: "doge-price-dec-2026",
+    numericId: "3009",
+    metricKind: "crypto_price",
+    category: "real_world",
+    displayCategory: "Crypto",
+    question: "DOGE price at Dec 31, 2026",
+    shortQuestion: "DOGE price",
+    description:
+      "Predict the Dogecoin spot price in USD. Resolved from CoinGecko's Dogecoin USD spot price feed for demo settlement.",
+    metric: "DOGE/USD spot price",
+    source: "CoinGecko dogecoin USD price",
+    window: cryptoMarketClosesLabel,
+    stake: "5+ testnet XLM",
+    maxPayout: "10x less 2% fee",
+    maxRangeWidth: "10000",
+    sealedPredictions: 0,
+    status: "active",
+    settlementStatus: "active",
+    tierSummary: "Up to 10x",
+    settlementSource: "Pending resolver-posted CoinGecko result",
+    settledValue: null,
+    tiers: defaultPayoutTiers,
+    rangeMin: 0,
+    rangeMax: 10000,
+    defaultLow: "500",
+    defaultHigh: "1000",
+    outcomeScale: 10000,
+    outcomeDecimals: 4,
+    outcomeUnit: "USD",
+    popularRange: "$0.0500 - $0.1000",
+    avgPayout: "3.7x",
+    displayVolume: "$14.6K",
+    resolverAssetId: "dogecoin",
+    snapshotPrice: "$0.0748",
+    resolutionTime: cryptoMarketResolutionTime,
+    closesLabel: cryptoMarketClosesLabel,
+  },
+  {
+    id: "hype-price-dec-2026",
+    numericId: "3010",
+    metricKind: "crypto_price",
+    category: "real_world",
+    displayCategory: "Crypto",
+    question: "HYPE price at Dec 31, 2026",
+    shortQuestion: "HYPE price",
+    description:
+      "Predict the Hyperliquid spot price in USD. Resolved from CoinGecko's Hyperliquid USD spot price feed for demo settlement.",
+    metric: "HYPE/USD spot price",
+    source: "CoinGecko hyperliquid USD price",
+    window: cryptoMarketClosesLabel,
+    stake: "5+ testnet XLM",
+    maxPayout: "10x less 2% fee",
+    maxRangeWidth: "1000",
+    sealedPredictions: 0,
+    status: "active",
+    settlementStatus: "active",
+    tierSummary: "Up to 10x",
+    settlementSource: "Pending resolver-posted CoinGecko result",
+    settledValue: null,
+    tiers: defaultPayoutTiers,
+    rangeMin: 0,
+    rangeMax: 1000,
+    defaultLow: "45",
+    defaultHigh: "85",
+    outcomeScale: 1,
+    outcomeDecimals: 0,
+    outcomeUnit: "USD",
+    popularRange: "$45 - $85",
+    avgPayout: "3.2x",
+    displayVolume: "$19.4K",
+    resolverAssetId: "hyperliquid",
+    snapshotPrice: "$64.38",
+    resolutionTime: cryptoMarketResolutionTime,
+    closesLabel: cryptoMarketClosesLabel,
+  },
+];
+
 export const realWorldSampleMarkets: Market[] = [
   {
     id: "btc-sunday-close-sample",
@@ -166,15 +409,17 @@ export const realWorldSampleMarkets: Market[] = [
   },
 ];
 
+export const liveMarkets = [...stellarMetricMarkets, ...cryptoPriceMarkets];
+
 export function getMarketById(id: string): Market | undefined {
-  return [...stellarMetricMarkets, ...realWorldSampleMarkets].find((market) => market.id === id);
+  return [...liveMarkets, ...realWorldSampleMarkets].find((market) => market.id === id);
 }
 
 export function formatOutcomeValue(market: Market, scaledValue: string | number | bigint): string {
   const numeric = Number(scaledValue) / market.outcomeScale;
   if (!Number.isFinite(numeric)) return "--";
 
-  if (market.metricKind === "xlm_usdc_price") {
+  if (market.metricKind === "xlm_usdc_price" || market.metricKind === "crypto_price") {
     return `$${numeric.toFixed(market.outcomeDecimals)}`;
   }
 
@@ -191,7 +436,7 @@ export function parseOutcomeDisplayValue(market: Market, displayValue: string): 
 }
 
 export const marketCounts = {
-  active: stellarMetricMarkets.filter((market) => market.status === "active").length,
+  active: liveMarkets.filter((market) => market.status === "active").length,
   samples: realWorldSampleMarkets.length,
-  sealedPredictions: stellarMetricMarkets.reduce((count, market) => count + market.sealedPredictions, 0),
+  sealedPredictions: liveMarkets.reduce((count, market) => count + market.sealedPredictions, 0),
 };

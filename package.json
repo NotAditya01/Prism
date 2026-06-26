@@ -10,6 +10,8 @@
     "proof:smoke": "node scripts/proof-smoke-test.ts",
     "resolve:xlm-payments": "node scripts/resolve-xlm-payments.ts",
     "resolve:xlm-usdc": "node scripts/resolve-xlm-usdc-price.ts",
+    "resolve:crypto-price": "node scripts/resolve-crypto-price.ts",
+    "create:crypto-markets": "node scripts/create-crypto-markets.ts",
     "start:server": "tsx server/index.ts",
     "typecheck:server": "tsc -p tsconfig.server.json",
     "integration:testnet": "node scripts/integration-test.ts",

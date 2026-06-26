@@ -2,10 +2,11 @@ import { Keypair, Networks } from "@stellar/stellar-sdk";
 import { basicNodeSigner } from "@stellar/stellar-sdk/contract";
 
 import { Client } from "../src/generated/prism-market/src/index.ts";
+import { fetchCryptoPrice, parseCryptoAssetId, CRYPTO_PRICE_MARKETS, type CryptoAssetId } from "../src/lib/resolver/crypto-price.ts";
 import { resolveTotalXlmPayments } from "../src/lib/resolver/xlm-payments.ts";
 import { fetchXlmUsdcPrice } from "../src/lib/resolver/xlm-usdc-price.ts";
 
-const DEFAULT_CONTRACT_ID = "CCNVNXIE74IBGWJOFNKQD6J2VZEZGQVNKZXBEKHFRWKVCOUXKFAFIQTJ";
+const DEFAULT_CONTRACT_ID = "CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO";
 const DEFAULT_TESTNET_RPC = "https://soroban-testnet.stellar.org";
 const DEFAULT_TESTNET_HORIZON = "https://horizon-testnet.stellar.org";
 const DEFAULT_MAINNET_HORIZON = "https://horizon.stellar.org";
@@ -17,6 +18,19 @@ type Settlement = {
   stellarExpert: string | null;
 };
 
+export class MarketNotReadyError extends Error {
+  readonly resolutionTime: number;
+  readonly secondsRemaining: number;
+
+  constructor(resolutionTime: number) {
+    const secondsRemaining = Math.max(0, resolutionTime - Math.floor(Date.now() / 1000));
+    super(`MarketNotReady: market resolves at ${new Date(resolutionTime * 1000).toISOString()}`);
+    this.name = "MarketNotReadyError";
+    this.resolutionTime = resolutionTime;
+    this.secondsRemaining = secondsRemaining;
+  }
+}
+
 export type ResolveXlmPaymentsInput = {
   marketId?: string;
   windowStart?: string;
@@ -25,6 +39,11 @@ export type ResolveXlmPaymentsInput = {
 };
 
 export type ResolveXlmUsdcInput = {
+  marketId?: string;
+};
+
+export type ResolveCryptoPriceInput = {
+  assetId?: string;
   marketId?: string;
 };
 
@@ -86,6 +105,12 @@ async function settleMarket(marketId: string, actualValue: string): Promise<Sett
       transactionHash: null,
       stellarExpert: null,
     };
+  }
+
+  const resolutionTime = Number(market.resolution_time ?? 0n);
+  const now = Math.floor(Date.now() / 1000);
+  if (resolutionTime > 0 && now < resolutionTime) {
+    throw new MarketNotReadyError(resolutionTime);
   }
 
   const transaction = await client.settle_market({
@@ -177,4 +202,30 @@ export async function resolveXlmUsdc(input: ResolveXlmUsdcInput = {}) {
     tx_hash: settlement.transactionHash,
     stellar_expert: settlement.stellarExpert,
   };
+}
+
+export async function resolveCryptoPrice(input: ResolveCryptoPriceInput = {}) {
+  const assetId = parseCryptoAssetId(input.assetId ?? "bitcoin");
+  const marketId = parseMarketId(input.marketId ?? process.env[`PRISM_${envAssetPrefix(assetId)}_MARKET_ID`] ?? CRYPTO_PRICE_MARKETS[assetId].marketId, "marketId");
+  const price = await fetchCryptoPrice({ assetId });
+  const settlement = await settleMarket(marketId, price.scaledPrice.toString());
+
+  return {
+    market_id: marketId,
+    asset_id: price.assetId,
+    symbol: price.symbol,
+    actual_value: price.scaledPrice.toString(),
+    actual_price_usd: price.priceUsd.toString(),
+    scale: price.scale,
+    horizon_source: price.source,
+    settled_at: new Date().toISOString(),
+    already_settled: settlement.alreadySettled,
+    resolver_address: settlement.resolverAddress,
+    tx_hash: settlement.transactionHash,
+    stellar_expert: settlement.stellarExpert,
+  };
+}
+
+function envAssetPrefix(assetId: CryptoAssetId) {
+  return assetId.toUpperCase().replace(/[^A-Z0-9]/g, "_");
 }

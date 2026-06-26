@@ -17,6 +17,7 @@ pub struct Market {
     pub min_stake: i128,
     pub max_range_width: u64,
     pub max_multiplier: u32,
+    pub resolution_time: u64,
     pub sealed_count: u32,
     pub claimed_count: u32,
     pub actual_value: i128,
@@ -96,6 +97,7 @@ pub enum Error {
     InsufficientPool = 14,
     BelowMinStake = 15,
     UnauthorizedResolver = 16,
+    MarketNotReady = 17,
 }
 
 #[contract]
@@ -121,6 +123,7 @@ impl PrismMarketContract {
         max_range_width: u64,
         max_multiplier: u32,
         min_stake: i128,
+        resolution_time: u64,
         treasury_address: Address,
         resolver_address: Address,
     ) -> Result<(), Error> {
@@ -140,6 +143,7 @@ impl PrismMarketContract {
             } else {
                 DEFAULT_MAX_MULTIPLIER
             },
+            resolution_time,
             sealed_count: 0,
             claimed_count: 0,
             actual_value: 0,
@@ -202,6 +206,10 @@ impl PrismMarketContract {
 
         if market.settled {
             return Err(Error::AlreadySettled);
+        }
+
+        if env.ledger().timestamp() < market.resolution_time {
+            return Err(Error::MarketNotReady);
         }
 
         market.actual_value = actual_value;

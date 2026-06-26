@@ -28,15 +28,16 @@ function xlm(value: number | bigint): string {
 
 async function stellar(args: string[]) {
   let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
       const { stdout, stderr } = await execFileAsync("stellar", args, { maxBuffer: 1024 * 1024 });
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       return `${stdout}\n${stderr}`.trim();
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
-      if (!/502|503|504|timeout|temporar|rate/i.test(message) || attempt === 3) throw error;
-      await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+      if (!/502|503|504|timeout|temporar|rate|TxBadSeq/i.test(message) || attempt === 5) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 4000));
     }
   }
   throw lastError instanceof Error ? lastError : new Error("stellar command failed");
@@ -84,13 +85,14 @@ async function invokeContract(contractId: string, functionName: string, params: 
   return stellar(args);
 }
 
-async function createMarket(marketId: string, maxRangeWidth = "1000") {
+async function createMarket(marketId: string, maxRangeWidth = "1000", resolutionTime = "1") {
   await invoke("create_market", {
     admin: requiredEnv("PRISM_ADMIN_ADDRESS"),
     market_id: marketId,
     max_range_width: maxRangeWidth,
     max_multiplier: "10",
     min_stake: xlm(5),
+    resolution_time: resolutionTime,
     treasury_address: requiredEnv("PRISM_TREASURY_ADDRESS"),
     resolver_address: requiredEnv("PRISM_RESOLVER_ADDRESS"),
   });

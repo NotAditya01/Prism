@@ -8,16 +8,22 @@ sealed until settlement — then you prove it was right.
 
 ## Live Demo
 
-**App:** [http://localhost:5173](http://localhost:5173) (local development)
+**App:** [prism-amber-ten.vercel.app](https://prism-amber-ten.vercel.app/)
 
-**Resolver:** [prism-production-9d69.up.railway.app](https://prism-production-9d69.up.railway.app/health)
+**Resolver:** [prism-production-9d69.up.railway.app/health](https://prism-production-9d69.up.railway.app/health)
 
-**Contract:** `CCNVNXIE74IBGWJOFNKQD6J2VZEZGQVNKZXBEKHFRWKVCOUXKFAFIQTJ`  
-[View on Stellar Expert →](https://stellar.expert/explorer/testnet/contract/CCNVNXIE74IBGWJOFNKQD6J2VZEZGQVNKZXBEKHFRWKVCOUXKFAFIQTJ)
+**Contract:** `CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO`
+[View on Stellar Expert →](https://stellar.expert/explorer/testnet/contract/CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO)
 
 **Live markets:**
 - Market 3003: Total XLM payments on Stellar testnet
 - Market 3004: XLM/USDC price from Stellar mainnet DEX
+- Market 3005: BTC price
+- Market 3006: ETH price
+- Market 3007: SOL price
+- Market 3008: XLM price
+- Market 3009: DOGE price
+- Market 3010: HYPE price
 
 ## How It Works
 
@@ -28,8 +34,8 @@ sealed until settlement — then you prove it was right.
 3. Stake XLM — transferred to the contract pool on-chain
 4. Market settles from live Stellar Horizon data
 5. Unlock your sealed prediction, generate a Groth16 ZK
-   proof locally, verify it in the browser, then submit a
-   claim — the contract validates the range and pays out
+   proof locally, then submit a claim — the contract
+   validates the range and pays out
 
 ## Why ZK Is Essential
 
@@ -49,6 +55,53 @@ your actual range, and the settled result falls inside it.
 
 ZK is not a privacy feature added on top. It is the
 reason the core mechanic works at all.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  U[User in browser] --> F[Freighter wallet]
+  U --> P[PRISM frontend]
+  P -->|Poseidon commitment<br/>AES-GCM sealed blob<br/>Soroban commit tx| C[Soroban market contract]
+  R[Railway resolver service]
+  H[Horizon / Stellar DEX data]
+  R -->|settle_market| C
+  R -->|reads| H
+  P -->|get_market / get_commitment / get_pool_balance| C
+  P -->|unlock + proof + claim tx| C
+```
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant UI as PRISM frontend
+  participant Wallet as Freighter
+  participant Contract as Soroban contract
+  participant Resolver as Railway resolver
+
+  User->>UI: Select range and stake
+  UI->>Wallet: Request connect + sign encryption message
+  UI->>Contract: commit_prediction(commitment, encrypted blob, stake)
+  Contract->>Contract: store commitment and transfer stake to pool
+  Resolver->>Resolver: Resolve actual value from Horizon / DEX data
+  Resolver->>Contract: settle_market(actual value)
+  User->>UI: Unlock sealed prediction
+  UI->>Wallet: Sign unlock message
+  UI->>UI: Decrypt locally + generate Groth16 proof
+  UI->>Contract: claim_winnings(range, salt, commitment)
+  Contract->>Contract: verify state, range, replay guard, payout math
+  Contract-->>User: Pay net winnings or reject
+```
+
+### Runtime Boundaries
+
+| Layer | Responsibility |
+|---|---|
+| Frontend | Range entry, wallet connection, encryption, proof generation, claim UX, live polling |
+| Freighter | Wallet authorization, transaction signing, encryption-message signing |
+| Soroban contract | Market state, stake custody, settlement state, payout logic, nullifier checks |
+| Railway resolver | Reads public Stellar data and posts settlement to the contract |
+| Horizon / DEX | Source data for the two live Stellar Metrics markets |
 
 ## Why Stellar Specifically
 
@@ -75,6 +128,17 @@ stake is practical because fees don't eat into returns.
 for both transaction signing and deterministic encryption
 key derivation.
 
+## Data Flow
+
+1. The UI reads market state from the Soroban contract.
+2. The user selects a range and stake.
+3. The frontend generates a Poseidon commitment in the browser.
+4. The frontend encrypts the full prediction blob with a key derived from a Freighter signature.
+5. The contract stores the commitment, encrypted blob, and stake.
+6. The resolver posts the resolved value from public Stellar data.
+7. The user unlocks the sealed prediction locally and generates a Groth16 proof in the browser.
+8. The contract checks the stored commitment, range, settlement state, and duplicate-claim guard before paying out.
+
 ## What Is Real vs Simulated
 
 | Component | Status |
@@ -100,6 +164,7 @@ settlement state, range validation, payout math, and
 duplicate prevention — but a modified client could
 theoretically submit a different winning range.
 
+
 The contract and circuit are structured to support BN254
 on-chain verification via Stellar's CAP-0074 host
 functions once a compatible verifier contract is
@@ -109,6 +174,18 @@ available. The verifier investigation is reproducible with
 For this hackathon MVP: proof generation and local
 verification are real, and Soroban enforces all
 state transitions.
+
+## Repo Map
+
+- [`src/App.tsx`](./src/App.tsx) - routes, page composition, prediction flow, claim flow, and resolver polling.
+- [`src/lib/commitment.ts`](./src/lib/commitment.ts) - Poseidon commitment generation.
+- [`src/lib/crypto/prediction-encryption.ts`](./src/lib/crypto/prediction-encryption.ts) - Freighter signature-derived encryption.
+- [`src/lib/contract/prism-market.ts`](./src/lib/contract/prism-market.ts) - generated contract client wrapper.
+- [`contracts/prism_market/src/lib.rs`](./contracts/prism_market/src/lib.rs) - Soroban contract.
+- [`server/resolvers.ts`](./server/resolvers.ts) - authenticated resolver logic.
+- [`scripts/resolve-xlm-payments.ts`](./scripts/resolve-xlm-payments.ts) - CLI resolver entrypoint for XLM payments.
+- [`scripts/resolve-xlm-usdc-price.ts`](./scripts/resolve-xlm-usdc-price.ts) - CLI resolver entrypoint for XLM/USDC.
+- [`scripts/integration-test.ts`](./scripts/integration-test.ts) - live testnet scenarios.
 
 ## Payout Formula
 
@@ -194,6 +271,7 @@ The deployed resolver exposes:
 GET  /health
 POST /resolve/xlm-payments
 POST /resolve/xlm-usdc
+POST /resolve/crypto-price
 ```
 
 Settlement endpoints require `RESOLVER_ADMIN_TOKEN` as a
@@ -208,11 +286,11 @@ npx ts-node scripts/integration-test.ts
 
 ## ZK Circuit Details
 
-**Proof system:** Circom + snarkjs + Groth16 (BN254)  
-**Commitment hash:** Poseidon(low, high, salt, market_id)  
+**Proof system:** Circom + snarkjs + Groth16 (BN254)
+**Commitment hash:** Poseidon(low, high, salt, market_id)
 **Encryption:** AES-GCM with HKDF-derived key from Freighter signature
 
-Private inputs: predicted_low, predicted_high, salt  
+Private inputs: predicted_low, predicted_high, salt
 Public inputs: commitment, actual_value, market_id, multiplier_tier
 
 The circuit proves commitment correctness and range
@@ -222,9 +300,10 @@ containment without revealing the range.
 
 | Contract | Address |
 |---|---|
-| PRISM Market v4 | `CCNVNXIE74IBGWJOFNKQD6J2VZEZGQVNKZXBEKHFRWKVCOUXKFAFIQTJ` |
-| Market 3003 pool | 10,000 XLM funded |
-| Market 3004 pool | 5,000 XLM funded |
+| PRISM Market v4 | `CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO` |
+| Contract liquidity | 9,000 XLM funded |
+| Markets | 3003-3010 created |
+| Crypto market resolution time | June 29, 2026 00:00 UTC |
 | Treasury/Resolver | `GDYC2AUKPBCFS24PIUYXUWPYL46QIQCELNUPTXA6B4SNNNTQJM2BBVP7` |
 
 ## Built With
