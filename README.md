@@ -12,8 +12,8 @@ sealed until settlement — then you prove it was right.
 
 **Resolver:** [prism-production-9d69.up.railway.app/health](https://prism-production-9d69.up.railway.app/health)
 
-**Contract:** `CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO`
-[View on Stellar Expert →](https://stellar.expert/explorer/testnet/contract/CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO)
+**Contract:** `CAEZKGE2O6YYPSH366MYEAB62DSMYYUNKQTLXWEHEATJKAISAKRKLO2N`
+[View on Stellar Expert →](https://stellar.expert/explorer/testnet/contract/CAEZKGE2O6YYPSH366MYEAB62DSMYYUNKQTLXWEHEATJKAISAKRKLO2N)
 
 **Live markets:**
 - Market 3003: Total XLM payments on Stellar testnet
@@ -192,7 +192,9 @@ state transitions.
 ```text
 width = high - low
 
-multiplier = min(max_range_width / width, max_multiplier)
+raw_multiplier = floor(max_range_width / width) - 1
+
+multiplier = max(1, min(raw_multiplier, max_multiplier))
 
 gross_payout = stake × multiplier
 
@@ -202,11 +204,24 @@ net_payout = gross_payout - fee
 ```
 
 Example: 10 XLM stake, range width 50, max width 1000
-→ multiplier = min(20, 10) = 10x
+→ raw_multiplier = floor(1000 / 50) - 1 = 19
+→ multiplier = max(1, min(19, 10)) = 10x
 → gross = 100 XLM, fee = 2 XLM, net = 98 XLM
+
+Example: 10 XLM stake, range width 454, max width 1000
+→ raw_multiplier = floor(1000 / 454) - 1 = 1
+→ multiplier = 1x
+→ gross = 10 XLM, fee = 0.2 XLM, net = 9.8 XLM
+
+This formula applies to every market on the deployed
+contract. Wide ranges can still win, but they no longer
+earn a bonus multiplier. The multiplier only becomes
+meaningful when the selected range is materially tighter
+than the market's full allowed range.
 
 Losing stakes remain in the contract pool and fund
 future winning payouts.
+
 
 ## Architecture
 
@@ -300,8 +315,8 @@ containment without revealing the range.
 
 | Contract | Address |
 |---|---|
-| PRISM Market v4 | `CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO` |
-| Contract liquidity | 9,000 XLM funded |
+| PRISM Market v4 | `CAEZKGE2O6YYPSH366MYEAB62DSMYYUNKQTLXWEHEATJKAISAKRKLO2N` |
+| Contract liquidity | 8,000 XLM funded |
 | Markets | 3003-3010 created |
 | Crypto market resolution time | June 29, 2026 00:00 UTC |
 | Treasury/Resolver | `GDYC2AUKPBCFS24PIUYXUWPYL46QIQCELNUPTXA6B4SNNNTQJM2BBVP7` |

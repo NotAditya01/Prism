@@ -4,7 +4,7 @@ import { basicNodeSigner } from "@stellar/stellar-sdk/contract";
 import { Client } from "../src/generated/prism-market/src/index.ts";
 import { cryptoMarketResolutionTime, cryptoPriceMarkets } from "../src/lib/markets.ts";
 
-const DEFAULT_CONTRACT_ID = "CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO";
+const DEFAULT_CONTRACT_ID = "CAEZKGE2O6YYPSH366MYEAB62DSMYYUNKQTLXWEHEATJKAISAKRKLO2N";
 const DEFAULT_TESTNET_RPC = "https://soroban-testnet.stellar.org";
 const STROOPS = 10_000_000n;
 

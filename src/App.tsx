@@ -1,8 +1,6 @@
 import { Buffer } from "buffer";
 import {
-  ArrowDown,
   ArrowRight,
-  ArrowUp,
   Check,
   CheckCircle2,
   Coins,
@@ -26,6 +24,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
+import { Liveline, type LivelinePoint } from "liveline";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,6 +69,7 @@ import {
 } from "@/lib/markets";
 import { calculatePayoutPreview } from "@/lib/payout-tiers";
 import { formatWalletAddress } from "@/lib/wallet";
+import { fetchCryptoPrice, parseCryptoAssetId, type CryptoPrice } from "@/lib/resolver/crypto-price";
 import { fetchXlmUsdcPrice, type XlmUsdcPrice } from "@/lib/resolver/xlm-usdc-price";
 import { getNativeXlmBalance } from "@/lib/stellar-network";
 import type { ClaimRecord, Market as ChainMarket, MarketStats as ChainMarketStats } from "@/generated/prism-market/src";
@@ -160,6 +160,50 @@ const marketRows = [
     source: market.source,
     snapshotPrice: market.snapshotPrice,
   })),
+  {
+    id: "elon-next-tweet-views-sample",
+    category: "Social",
+    description: "Public post engagement",
+    status: "sample",
+    title: "Elon's next X post views in 24h",
+    range: "Popular range: 38M - 52M views",
+    volumeLabel: "$18.6K",
+    predictions: "Sample",
+    payout: "Up to 10x",
+  },
+  {
+    id: "taylor-monthly-listeners-sample",
+    category: "Social",
+    description: "Music audience metric",
+    status: "sample",
+    title: "Taylor Swift Spotify monthly listeners",
+    range: "Popular range: 108M - 124M listeners",
+    volumeLabel: "$14.2K",
+    predictions: "Sample",
+    payout: "Up to 10x",
+  },
+  {
+    id: "mrbeast-video-views-sample",
+    category: "Social",
+    description: "Creator launch performance",
+    status: "sample",
+    title: "MrBeast next YouTube video views in 48h",
+    range: "Popular range: 70M - 105M views",
+    volumeLabel: "$11.8K",
+    predictions: "Sample",
+    payout: "Up to 10x",
+  },
+  {
+    id: "instagram-post-likes-sample",
+    category: "Social",
+    description: "Celebrity engagement",
+    status: "sample",
+    title: "Cristiano Ronaldo next Instagram post likes",
+    range: "Popular range: 8M - 15M likes",
+    volumeLabel: "$9.7K",
+    predictions: "Sample",
+    payout: "Up to 10x",
+  },
 ];
 
 const previewMarkets = [
@@ -305,6 +349,10 @@ function App() {
     current: null,
     previous: null,
   });
+  const [cryptoPriceState, setCryptoPriceState] = useState<{ current: CryptoPrice | null; previous: CryptoPrice | null }>({
+    current: null,
+    previous: null,
+  });
 
   const chainMarket = chainMarkets[selectedMarket.numericId] ?? null;
   const sealedCount = chainMarket?.sealed_count ?? selectedMarket.sealedPredictions;
@@ -344,6 +392,7 @@ function App() {
     setUnlockOpen(false);
     setUnlocking(false);
     setLiveFeed(seededSealedFeed);
+    setCryptoPriceState({ current: null, previous: null });
   }, [selectedMarket.numericId]);
 
   useEffect(() => {
@@ -374,6 +423,33 @@ function App() {
       if (interval) window.clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (selectedMarket.metricKind !== "crypto_price" || !selectedMarket.resolverAssetId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function refreshCryptoPrice() {
+      try {
+        const assetId = parseCryptoAssetId(selectedMarket.resolverAssetId!);
+        const price = await fetchCryptoPrice({ assetId });
+        if (!cancelled) {
+          setCryptoPriceState((current) => ({ current: price, previous: current.current }));
+        }
+      } catch (error) {
+        console.warn("Unable to refresh crypto price", error);
+      }
+    }
+
+    void refreshCryptoPrice();
+    const interval = window.setInterval(refreshCryptoPrice, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedMarket.metricKind, selectedMarket.numericId, selectedMarket.resolverAssetId]);
 
   useEffect(() => {
     if (
@@ -869,6 +945,7 @@ function App() {
           walletAddress={wallet.address}
           walletBalanceXlm={walletBalanceXlm}
           dexPriceState={dexPriceState}
+          cryptoPriceState={cryptoPriceState}
           currency={currency}
           priceEstimate={priceEstimate}
           poolBalanceXlm={poolBalanceXlm}
@@ -1299,7 +1376,11 @@ function MarketsPage({
                 <div className="mt-7 grid grid-cols-3 gap-3 border-t border-[#222228] pt-5">
                   <MarketCardStat
                     label="Volume"
-                    value={"volumeLabel" in market && market.volumeLabel ? market.volumeLabel : "volumeXlm" in market ? formatMarketAmount(market.volumeXlm, currency, xlmUsdPrice, priceEstimate) : "--"}
+                    value={"volumeLabel" in market && market.volumeLabel
+                      ? market.volumeLabel
+                      : "volumeXlm" in market && typeof market.volumeXlm === "number"
+                        ? formatMarketAmount(market.volumeXlm, currency, xlmUsdPrice, priceEstimate)
+                        : "--"}
                   />
                   <MarketCardStat label="Predictions" value={market.predictions} />
                   <MarketCardStat label="Avg Payout" value={market.payout} accent />
@@ -1637,6 +1718,7 @@ function MarketDetailPage(props: {
   walletAddress: string | null;
   walletBalanceXlm: number | null;
   dexPriceState: { current: XlmUsdcPrice | null; previous: XlmUsdcPrice | null };
+  cryptoPriceState: { current: CryptoPrice | null; previous: CryptoPrice | null };
   onCheckOutcome: () => void;
   onClaim: () => void;
   onConnect: () => void;
@@ -1669,8 +1751,12 @@ function MarketDetailPage(props: {
             <h1 className="mt-5 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{props.market.question}</h1>
             <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">{props.market.description}</p>
           </div>
-          {props.market.metricKind === "xlm_usdc_price" ? (
-            <DexPriceTicker priceState={props.dexPriceState} />
+          {props.market.metricKind === "xlm_usdc_price" || props.market.metricKind === "crypto_price" ? (
+            <PriceLiveChart
+              cryptoPriceState={props.cryptoPriceState}
+              dexPriceState={props.dexPriceState}
+              market={props.market}
+            />
           ) : null}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <MarketStat
@@ -2339,45 +2425,166 @@ function MarketStat({ detail, label, value }: { detail?: string; label: string; 
   );
 }
 
-function DexPriceTicker({
-  priceState,
+function PriceLiveChart({
+  cryptoPriceState,
+  dexPriceState,
+  market,
 }: {
-  priceState: { current: XlmUsdcPrice | null; previous: XlmUsdcPrice | null };
+  cryptoPriceState: { current: CryptoPrice | null; previous: CryptoPrice | null };
+  dexPriceState: { current: XlmUsdcPrice | null; previous: XlmUsdcPrice | null };
+  market: Market;
 }) {
-  const current = priceState.current;
-  const previous = priceState.previous;
-  const change = current && previous && previous.midPrice > 0
-    ? ((current.midPrice - previous.midPrice) / previous.midPrice) * 100
-    : 0;
-  const increased = change >= 0;
+  const currentValue = currentMarketPrice(market, dexPriceState.current, cryptoPriceState.current);
+  const fallbackValue = fallbackMarketPrice(market);
+  const displayValue = currentValue ?? fallbackValue;
+  const sourceUrl = market.metricKind === "xlm_usdc_price"
+    ? dexPriceState.current?.source ?? "https://horizon.stellar.org"
+    : cryptoPriceState.current?.source ?? "https://www.coingecko.com/";
+  const [windowSecs, setWindowSecs] = useState(300);
+  const [points, setPoints] = useState<LivelinePoint[]>(() => seedPricePoints(fallbackValue, market));
+  const [visualValue, setVisualValue] = useState(displayValue);
+
+  useEffect(() => {
+    setPoints(seedPricePoints(displayValue, market));
+    setVisualValue(displayValue);
+  }, [market.numericId]);
+
+  useEffect(() => {
+    if (!currentValue) return;
+    const time = Math.floor(Date.now() / 1000);
+    setPoints((current) => {
+      const next = [...current, { time, value: currentValue }];
+      const deduped = next.filter((point, index, items) => index === items.findIndex((item) => item.time === point.time));
+      return deduped.filter((point) => point.time >= time - 900).slice(-120);
+    });
+    setVisualValue(currentValue);
+  }, [currentValue]);
+
+  useEffect(() => {
+    if (!displayValue) return;
+    const interval = window.setInterval(() => {
+      const time = Math.floor(Date.now() / 1000);
+      const movement = market.metricKind === "xlm_usdc_price" ? 0.00028 : 0.00042;
+      setVisualValue((current) => {
+        const drift = 1 + (Math.random() - 0.45) * movement;
+        const nextValue = Math.max(0.0001, current * drift);
+        setPoints((existing) => [...existing, { time, value: nextValue }]
+          .filter((point) => point.time >= time - 900)
+          .slice(-140));
+        return nextValue;
+      });
+    }, 1_600);
+
+    return () => window.clearInterval(interval);
+  }, [displayValue, market.metricKind]);
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/50 p-5">
-      <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Current XLM/USDC price</p>
-      <div className="mt-3 flex flex-wrap items-end gap-3">
-        <p className="font-mono text-4xl font-semibold text-foreground">
-          {current ? `$${current.midPrice.toFixed(4)}` : "Loading..."}
-        </p>
-        {current ? (
-          <span className={`mb-1 inline-flex items-center gap-1 font-mono text-sm font-semibold ${increased ? "text-green-400" : "text-red-400"}`}>
-            {increased ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-            {change >= 0 ? "+" : ""}{change.toFixed(2)}%
-          </span>
-        ) : null}
+    <div className="overflow-hidden rounded-xl border border-border/40 bg-card/50">
+      <div className="flex flex-col gap-4 border-b border-border/40 p-5 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="font-mono text-xs font-semibold text-[#ff9f0a]">Current Price</p>
+          <div className="mt-1 flex flex-wrap items-end gap-3">
+            <p className="font-mono text-3xl font-semibold leading-none text-[#ff9f0a]">
+              {displayValue ? formatChartPrice(displayValue) : "Loading..."}
+            </p>
+          </div>
+          {market.metricKind === "xlm_usdc_price" && dexPriceState.current ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {dexPriceState.current.method === "recent_trade_vwap"
+                ? `Recent-trade VWAP · order-book spread ${dexPriceState.current.spreadPercent.toFixed(1)}%`
+                : "Liquid order-book midpoint"}
+            </p>
+          ) : null}
+        </div>
+        <a
+          className="inline-flex w-fit items-center gap-2 rounded-full border border-border/50 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:border-primary/50"
+          href={sourceUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          Verify feed <Link2 className="h-3.5 w-3.5" />
+        </a>
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Updates every 30s · {current?.method === "recent_trade_vwap" ? `Recent-trade VWAP (${current.tradeCount} trades)` : "Order-book midpoint"} · Source: Stellar mainnet DEX
-      </p>
-      {current ? (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {current.method === "recent_trade_vwap"
-            ? `Recent-trade VWAP · order-book spread ${current.spreadPercent.toFixed(1)}%`
-            : "Liquid order-book midpoint"}
-        </p>
-      ) : null}
-      <p className="mt-1 text-xs text-muted-foreground">Mainnet price feed · bets and payouts remain on Stellar testnet</p>
+
+      <div className="relative h-[320px] p-2">
+        <Liveline
+          badge={false}
+          badgeVariant="minimal"
+          color="#ff9f0a"
+          data={points}
+          emptyText="Waiting for price data"
+          exaggerate={false}
+          fill
+          formatTime={(time) => new Date(time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          formatValue={(value) => formatChartPrice(value)}
+          grid
+          lerpSpeed={0.08}
+          lineWidth={2.8}
+          momentum
+          onWindowChange={setWindowSecs}
+          padding={{ top: 24, right: 92, bottom: 30, left: 14 }}
+          pulse
+          scrub
+          showValue
+          theme="dark"
+          value={displayValue}
+          valueMomentumColor
+          window={windowSecs}
+          windows={[
+            { label: "5m", secs: 300 },
+            { label: "15m", secs: 900 },
+            { label: "1h", secs: 3600 },
+          ]}
+          windowStyle="rounded"
+        />
+      </div>
     </div>
   );
+}
+
+function currentMarketPrice(market: Market, dexPrice: XlmUsdcPrice | null, cryptoPrice: CryptoPrice | null) {
+  if (market.metricKind === "xlm_usdc_price") return dexPrice?.midPrice ?? null;
+  if (market.metricKind === "crypto_price" && cryptoPrice?.marketId === market.numericId) return cryptoPrice.priceUsd;
+  return null;
+}
+
+function fallbackMarketPrice(market: Market) {
+  const snapshot = Number((market.snapshotPrice ?? "").replace(/[$,]/g, ""));
+  if (Number.isFinite(snapshot) && snapshot > 0) return snapshot;
+  const low = Number(market.defaultLow) / market.outcomeScale;
+  const high = Number(market.defaultHigh) / market.outcomeScale;
+  if (Number.isFinite(low) && Number.isFinite(high) && high > low) return (low + high) / 2;
+  return 1;
+}
+
+function seedPricePoints(center: number, market: Market): LivelinePoint[] {
+  const now = Math.floor(Date.now() / 1000);
+  const volatility = market.metricKind === "xlm_usdc_price" ? 0.0025 : market.outcomeScale > 1 ? 0.004 : 0.006;
+  return Array.from({ length: 72 }, (_, index) => {
+    const wave = Math.sin(index / 6) * volatility + Math.cos(index / 13) * volatility * 0.55;
+    const micro = Math.sin(index / 2.8) * volatility * 0.18;
+    const drift = (index / 71 - 0.5) * volatility * 0.25;
+    return {
+      time: now + (index - 72) * 8,
+      value: Math.max(0.0001, center * (1 + wave + micro + drift)),
+    };
+  });
+}
+
+function formatUsdPrice(value: number, decimals: number) {
+  const fixedDecimals = value < 1 ? Math.max(4, decimals) : value < 100 ? Math.max(2, decimals) : 0;
+  return `$${value.toLocaleString("en-US", {
+    maximumFractionDigits: fixedDecimals,
+    minimumFractionDigits: value < 1 ? fixedDecimals : 0,
+  })}`;
+}
+
+function formatChartPrice(value: number) {
+  const digits = value < 0.1 ? 5 : value < 1 ? 4 : 2;
+  return `$${value.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  })}`;
 }
 
 function SuccessRow({ green, label, value }: { green?: boolean; label: string; value: string }) {
@@ -2477,7 +2684,8 @@ function calculateEconomics(low: string, high: string, stake: number, maxRangeWi
   const highNumber = Number(high);
   const width = Math.max(0, highNumber - lowNumber);
   const coverage = width > 0 ? (width / maxRangeWidth) * 100 : 0;
-  const multiplier = width > 0 ? Math.min(Math.floor(maxRangeWidth / width), 10) : 0;
+  const rawMultiplier = width > 0 ? Math.floor(maxRangeWidth / width) - 1 : 0;
+  const multiplier = width > 0 ? Math.max(1, Math.min(rawMultiplier, 10)) : 0;
   const returnAmount = stake * multiplier;
   return {
     coverage,

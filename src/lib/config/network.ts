@@ -1,5 +1,5 @@
 export const NETWORK_CONFIG = {
-  contractId: import.meta.env.VITE_CONTRACT_ID ?? "CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO",
+  contractId: import.meta.env.VITE_CONTRACT_ID ?? "CAEZKGE2O6YYPSH366MYEAB62DSMYYUNKQTLXWEHEATJKAISAKRKLO2N",
   marketId: 3003,
   network: "testnet",
   horizonUrl: "https://horizon-testnet.stellar.org",

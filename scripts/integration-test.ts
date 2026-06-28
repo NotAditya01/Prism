@@ -228,8 +228,8 @@ function scenarioList(): Scenario[] {
         await invoke("settle_market", { resolver, market_id: id, actual_value: "321" });
         await claim(id, wallet, 100n, 600n, salt, hashHex);
         const record = await claimRecord(id, wallet);
-        if (record.payout !== 98_000_000n) throw new Error("claim record payout is not 9.8 XLM");
-        if (record.fee !== 2_000_000n) throw new Error("claim record fee is not 0.2 XLM");
+        if (record.payout !== 49_000_000n) throw new Error("claim record payout is not 4.9 XLM");
+        if (record.fee !== 1_000_000n) throw new Error("claim record fee is not 0.1 XLM");
       },
     },
     {

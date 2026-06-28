@@ -48,6 +48,7 @@ export function buildCoinGeckoSimplePriceUrl(assetId: CryptoAssetId): string {
   const query = new URLSearchParams({
     ids: assetId,
     vs_currencies: "usd",
+    precision: "full",
   });
   return `${COINGECKO_SIMPLE_PRICE_URL}?${query.toString()}`;
 }

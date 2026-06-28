@@ -6,7 +6,7 @@ import { fetchCryptoPrice, parseCryptoAssetId, CRYPTO_PRICE_MARKETS, type Crypto
 import { resolveTotalXlmPayments } from "../src/lib/resolver/xlm-payments.ts";
 import { fetchXlmUsdcPrice } from "../src/lib/resolver/xlm-usdc-price.ts";
 
-const DEFAULT_CONTRACT_ID = "CBUPR4BIQF7PON277VHOBWKQBGJTB6UW23C36GDXMXEKLPBXUCC2KODO";
+const DEFAULT_CONTRACT_ID = "CAEZKGE2O6YYPSH366MYEAB62DSMYYUNKQTLXWEHEATJKAISAKRKLO2N";
 const DEFAULT_TESTNET_RPC = "https://soroban-testnet.stellar.org";
 const DEFAULT_TESTNET_HORIZON = "https://horizon-testnet.stellar.org";
 const DEFAULT_MAINNET_HORIZON = "https://horizon.stellar.org";

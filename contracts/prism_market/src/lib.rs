@@ -523,8 +523,10 @@ fn gross_payout_for_width(
         return Err(Error::InvalidRange);
     }
 
-    let uncapped_multiplier = max_range_width / width;
-    let multiplier = if uncapped_multiplier > max_multiplier {
+    let uncapped_multiplier = (max_range_width / width) - 1;
+    let multiplier = if uncapped_multiplier < 1 {
+        1
+    } else if uncapped_multiplier > max_multiplier {
         max_multiplier
     } else {
         uncapped_multiplier
