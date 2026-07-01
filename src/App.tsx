@@ -147,6 +147,17 @@ const marketRows = [
     predictions: "Live",
     payout: "Up to 10x",
   },
+  {
+    id: stellarMetricMarkets[2].id,
+    category: "Stellar",
+    description: "Stellar payment volume",
+    status: "active",
+    title: "Stellar network payment volume",
+    range: "Resolver-triggered Horizon window",
+    volumeLabel: "Live",
+    predictions: "Live",
+    payout: "Up to 10x",
+  },
   ...cryptoPriceMarkets.map((market) => ({
     id: market.id,
     category: market.displayCategory ?? "Crypto",

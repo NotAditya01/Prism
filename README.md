@@ -24,6 +24,7 @@ sealed until settlement — then you prove it was right.
 - Market 3008: XLM price
 - Market 3009: DOGE price
 - Market 3010: HYPE price
+- Market 3011: Stellar network payment volume
 
 ## How It Works
 
@@ -139,7 +140,7 @@ key derivation.
 7. The user unlocks the sealed prediction locally and generates a Groth16 proof in the browser.
 8. The contract checks the stored commitment, range, settlement state, and duplicate-claim guard before paying out.
 
-## What Is Real vs Simulated
+## What Is Real vs Not Yet Wired
 
 | Component | Status |
 |---|---|
@@ -222,8 +223,35 @@ than the market's full allowed range.
 Losing stakes remain in the contract pool and fund
 future winning payouts.
 
+## Crypto Market Bands
 
-## Architecture
+Crypto markets use practical forecast bands based on live
+CoinGecko spot prices fetched during deployment. The bands
+are intentionally wide enough to be fair for a volatile
+forecast, but not so wide that obvious safe ranges earn
+large multipliers.
+
+| Market | Spot used | Forecast band | Max range width |
+|---|---:|---:|---:|
+| BTC | ~$60,266 | $30,000-$130,000 | 100,000 |
+| ETH | ~$1,583 | $800-$4,000 | 3,200 |
+| SOL | ~$71.50 | $25-$250 | 225 |
+| XLM | ~$0.1743 | $0.0500-$0.5000 | 4,500 scaled |
+| DOGE | ~$0.0751 | $0.0250-$0.3000 | 2,750 scaled |
+| HYPE | ~$62.70 | $20-$160 | 140 |
+
+Example: an ETH prediction of $1,040-$3,217 has width
+2,177. With a max width of 3,200:
+
+```text
+raw_multiplier = floor(3200 / 2177) - 1 = 0
+multiplier = 1x
+```
+
+That broad range can still win, but it does not receive
+a bonus payout.
+
+## Stack Map
 
 ```text
 React frontend (Vite + TypeScript + shadcn)
@@ -265,7 +293,7 @@ Circom circuit
 ## How to Run Locally
 
 ```bash
-git clone [repo]
+git clone https://github.com/NotAditya01/Prism.git
 cd prismf
 npm install
 cp .env.example .env
@@ -277,6 +305,7 @@ To run the resolver:
 
 ```bash
 npm run resolve:xlm-payments -- --max-pages=1
+npm run resolve:xlm-payments -- --market-id=3011 --max-pages=1
 npm run resolve:xlm-usdc
 ```
 
@@ -292,6 +321,25 @@ POST /resolve/crypto-price
 Settlement endpoints require `RESOLVER_ADMIN_TOKEN` as a
 Bearer token. Resolver credentials remain server-side on
 Railway and are never exposed to the frontend.
+
+## Demo Flow
+
+Use market 3011 for a short end-to-end demo:
+
+1. Open `/markets/stellar-network-payment-volume`
+2. Connect Freighter on Stellar testnet
+3. Choose a range and stake XLM
+4. Place prediction
+5. Run:
+
+```bash
+npm run resolve:xlm-payments -- --market-id=3011 --max-pages=1
+```
+
+6. Refresh the market page
+7. Unlock the sealed prediction
+8. Claim if the resolved value lands inside the range
+9. Open the transaction on Stellar Expert
 
 To run integration tests:
 
@@ -316,8 +364,8 @@ containment without revealing the range.
 | Contract | Address |
 |---|---|
 | PRISM Market v4 | `CAEZKGE2O6YYPSH366MYEAB62DSMYYUNKQTLXWEHEATJKAISAKRKLO2N` |
-| Contract liquidity | 8,000 XLM funded |
-| Markets | 3003-3010 created |
+| Contract liquidity | 9,000 XLM funded |
+| Markets | 3003-3011 created |
 | Crypto market resolution time | June 29, 2026 00:00 UTC |
 | Treasury/Resolver | `GDYC2AUKPBCFS24PIUYXUWPYL46QIQCELNUPTXA6B4SNNNTQJM2BBVP7` |
 
